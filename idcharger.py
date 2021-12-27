@@ -1,5 +1,7 @@
 import requests
 import paho.mqtt.client as mqtt
+from settings import Settings
+import logging
 import urllib3
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
@@ -12,7 +14,7 @@ class IdCharger:
         self.ct1 = 0.0
         self.ct2 = 0.0
         self.ct3 = 0.0
-        print("Starting MQTT client")
+        logging.info("Starting MQTT client")
         self.mqttClient = mqtt.Client()
         self.mqttClient.on_connect = self.on_connect
         if len(self.settings.mqtt_user + self.settings.mqtt_password) > 0:
@@ -21,11 +23,11 @@ class IdCharger:
                 password=self.settings.mqtt_password)
 
     def on_connect(self, client, userdata, flags, rc):
-        print("Connected with result code "+str(rc))
+        logging.info("Connected with result code "+str(rc))
         self.connected_result = rc
 
     def mqtt_connect(self):
-        print("Connecting to MQTT client")
+        logging.info("Connecting to MQTT client")
         self.mqttClient.connect(self.settings.mqtt_broker,
                                 self.settings.mqtt_port)
         self.mqttClient.loop(20)
