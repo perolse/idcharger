@@ -1,0 +1,30 @@
+{
+
+    "name": "VW Id Charger",
+    "description": "Support for the wall charger from VW",
+    "version": "0.0.1",
+    "slug": "vwidcharger",
+    "arch": [
+        "aarch64",
+        "amd64",
+        "armhf",
+        "armv7",
+        "i386"],
+    "host_network": true,
+    "options": {
+        "host": "",
+        "password": "",
+        "mqttBroker": "",
+        "mqttPort": 1883,
+        "mqttUser": "",
+        "mqttPassword": ""
+    },
+    "schema": {
+        "host": "str",
+        "password": "str",
+        "mqttBroker": "str",
+        "mqttPort": "int",
+        "mqttUser": "str",
+        "mqttPassword": "str"
+    }
+}
