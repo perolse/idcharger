@@ -56,22 +56,32 @@ class IdCharger:
 
     def fetch_values(self):
         try:
+            logging.info("Try to login on Id Charger")
             login_response = requests.post(
                 url=self.settings.host+self.loginUrl,
                 json={"password": self.settings.password},
-                verify=False)
+                verify=False, timeout=30)
+            if login_response.status_code != requests.codes.ok:
+                logging.error("Login failed, status: %s", login_response.status_code)
+                return False
             headers = {
                 'Authorization': 'Bearer '
                 + login_response.json().get('access_token')
             }
+            logging.info("Try to fetch values")
             ct_coil_response = requests.get(
                 url=self.settings.host+self.ctCoilUrl,
-                headers=headers, verify=False)
+                headers=headers, verify=False, timeout=10)
+            if ct_coil_response.status_code != requests.codes.ok:
+                logging.error("Fetch failed, status: %s", ct_coil_response.status_code)
+                return False
+            logging.info("Values fetched")
             self.ct1 = float(ct_coil_response.json().get('CT1'))
             self.ct2 = float(ct_coil_response.json().get('CT2'))
             self.ct3 = float(ct_coil_response.json().get('CT3'))
             return True
-        except Exception:
+        except Exception as e:
+            logging.info("Fetch values failed: %s", str(e))
             return False
 
     def send_values(self):
