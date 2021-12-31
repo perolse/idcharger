@@ -1,7 +1,7 @@
 {
     "name": "VW Id Charger",
     "description": "Support for the wall charger from VW",
-    "version": "0.0.3",
+    "version": "0.0.4",
     "slug": "vwidcharger",
     "arch": [
         "aarch64",
