@@ -1,7 +1,7 @@
 import requests
-import paho.mqtt.client as mqtt
 from settings import Settings
 import logging
+import threading
 import urllib3
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
@@ -10,51 +10,16 @@ class IdCharger:
     def __init__(self, settings):
         self.settings = settings
         self.loginUrl = '/api/v1/auth/login'
+        self.refreshUrl = '/api/v1/auth/refresh'
         self.ctCoilUrl = '/api/v1/evse-settings/ct-coil-measured-current'
+        self.access_token = None
+        self.refresh_token = None
         self.ct1 = 0.0
         self.ct2 = 0.0
         self.ct3 = 0.0
-        logging.info("Starting MQTT client")
-        self.mqttClient = mqtt.Client()
-        self.mqttClient.on_connect = self.on_connect
-        if len(self.settings.mqtt_user + self.settings.mqtt_password) > 0:
-            self.mqttClient.username_pw_set(
-                username=self.settings.mqtt_user,
-                password=self.settings.mqtt_password)
+        self.update_access_token()
 
-    def on_connect(self, client, userdata, flags, rc):
-        logging.info("Connected with result code "+str(rc))
-        self.connected_result = rc
-
-    def mqtt_connect(self):
-        logging.info("Connecting to MQTT client")
-        self.mqttClient.connect(self.settings.mqtt_broker,
-                                self.settings.mqtt_port)
-        self.mqttClient.loop(20)
-        return self.connected_result == 0
-
-    def update_sensor_configs(self):
-        config_address = 'homeassistant/sensor/vwidcharger/ct{id}/config'
-        config_template = '{{\n' + \
-            '  "device_class": "current",\n' + \
-            '  "name": "VW ID Charger Ct-Coil-{id}",\n' + \
-            '  "unique_id": "ct{id}",\n' + \
-            '  "state_topic": "vw/idcharger/ctcoil",\n' + \
-            '  "unit_of_measurement": "A",\n' + \
-            '  "value_template": "{{{{ value_json.CT{id} }}}}"\n' + \
-            '}}'
-        result = self.mqttClient.publish(config_address.format(id='1'),
-                                         config_template.format(id='1'))
-        retval = result[0]
-        result = self.mqttClient.publish(config_address.format(id='2'),
-                                         config_template.format(id='2'))
-        retval = retval + result[0]
-        result = self.mqttClient.publish(config_address.format(id='3'),
-                                         config_template.format(id='3'))
-        retval = retval + result[0]
-        return retval == 0
-
-    def fetch_values(self):
+    def login(self):
         try:
             logging.info("Try to login on Id Charger")
             login_response = requests.post(
@@ -63,10 +28,55 @@ class IdCharger:
                 verify=False, timeout=30)
             if login_response.status_code != requests.codes.ok:
                 logging.error("Login failed, status: %s", login_response.status_code)
+                self.access_token = None
+                self.refresh_token = None
+                return
+            self.access_token = login_response.json().get('access_token')
+            self.refresh_token = login_response.json().get('refresh')
+        except Exception as e:
+            logging.error("Login Id Charger failed: %s", str(e))
+            self.access_token = None
+
+    def refresh(self):
+        try:
+            logging.info("Try to refresh token on Id Charger")
+            refresh_response = requests.post(
+                url=self.settings.host+self.refreshUrl,
+                json={"refresh_token": self.refresh_token},
+                verify=False, timeout=30)
+            if refresh_response.status_code != requests.codes.ok:
+                logging.error("Refresh failed, status: %s", refresh_response.status_code)
+                self.access_token = None
                 return False
+            self.access_token = refresh_response.json().get('access_token')
+        except Exception as e:
+            logging.error("Refresh access token for Id Charger failed: %s", str(e))
+            self.access_token = None
+
+    def update_access_token(self):
+        try:
+            if self.refresh_token == None:
+                if self.login():
+                    raise Exception("Login failed")
+            else:
+                if not refresh():
+                    if self.login():
+                        raise Exception("Login failed")
+            self.token_refresh_timer = threading.Timer(120, self.update_access_token)
+            self.token_refresh_timer.start()
+
+        except Exception as e:
+            logging.error("Update access token for Id Charger failed: %s", str(e))
+            self.access_token = None
+            self.refresh_token = None
+
+    def stop(self):
+        self.token_refresh_timer.cancel()
+
+    def fetch_values(self):
+        try:
             headers = {
-                'Authorization': 'Bearer '
-                + login_response.json().get('access_token')
+                'Authorization': 'Bearer ' + self.access_token
             }
             logging.info("Try to fetch values")
             ct_coil_response = requests.get(
@@ -84,14 +94,3 @@ class IdCharger:
             logging.info("Fetch values failed: %s", str(e))
             return False
 
-    def send_values(self):
-        value_str = '{{\n' + \
-                    '  "CT1":{val1},\n' + \
-                    '  "CT2":{val2},\n' + \
-                    '  "CT3":{val3}\n' + \
-                    '}}'
-        result = self.mqttClient.publish('vw/idcharger/ctcoil',
-                                         value_str.format(val1=self.ct1,
-                                                          val2=self.ct2,
-                                                          val3=self.ct3))
-        return result[0] == 0
